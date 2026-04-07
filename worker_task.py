@@ -115,29 +115,34 @@ class NotebookLMPlaywright:
                 # 3. INSERIMENTO URL
                 logger.info(f"✍️ Inserimento URL: {news_url}")
                 
-                # Invece di cercare classi specifiche, cerchiamo QUALSIASI input visibile nella modale
-                # Spesso Google usa degli ID dinamici
-                url_input = page.locator("input").first
+                # Usiamo un selettore molto più preciso per l'input dell'URL
+                # Cerchiamo l'input che NON è quello del titolo
+                url_input = page.locator("input[type='url'], input.mat-mdc-input-element").filter(has_not_class="title-input").first
                 
-                # Se non è visibile, proviamo a cercarlo via placeholder pulito
-                if not await url_input.is_visible():
-                    url_input = page.get_by_placeholder(re.compile(r"https", re.IGNORECASE))
-
+                # Aspettiamo che sia pronto
                 await url_input.wait_for(state="visible", timeout=15000)
                 
-                # Azione di scrittura pulita
-                await url_input.click()
-                await page.keyboard.type(news_url, delay=100) # Scrive come un umano per evitare blocchi
-                await page.wait_for_timeout(1000)
+                # AZIONE FORZATA: Usiamo fill() con force=True o scriviamo via JS 
+                # per ignorare il "velo" (backdrop) che intercetta i click
+                await url_input.focus()
+                await url_input.fill(news_url, force=True)
+                
+                logger.info("🔗 URL inserito forzatamente.")
                 await page.keyboard.press("Enter")
                 
-                # Attesa per il tasto "Inserisci" o "Aggiungi"
+                # 4. CONFERMA (Tasto Aggiungi/Insert)
                 await page.wait_for_timeout(3000)
-                # Molti tasti di conferma di Google hanno la classe 'mat-mdc-button'
-                confirm_btn = page.locator("button:has-text('Insert'), button:has-text('Aggiungi'), button:has-text('Add')").first
-                if await confirm_btn.is_visible():
-                    await confirm_btn.click()
-                    logger.info("✅ Tasto conferma cliccato.")
+                
+                # Clicchiamo il tasto di conferma usando JavaScript per bypassare di nuovo il backdrop
+                await page.evaluate("""() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const confirmBtn = buttons.find(b => 
+                        b.textContent.includes('Insert') || 
+                        b.textContent.includes('Aggiungi') || 
+                        b.textContent.includes('Add')
+                    );
+                    if (confirmBtn) confirmBtn.click();
+                }""")
                 
                 # 4. Attesa e Download
                 logger.info("⏳ Generazione in corso (può volerci qualche minuto)...")
