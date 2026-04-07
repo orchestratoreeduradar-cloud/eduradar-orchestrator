@@ -163,12 +163,15 @@ class NotebookLMClient:
 
     def _get_client(self):
         if self._client is None:
-            # Prova a usare notebooklm_py se notebooklm fallisce
             try:
-                from notebooklm import NotebookLM
-            except ImportError:
+                # Proviamo il nome con l'underscore (standard per notebooklm-py)
                 from notebooklm_py import NotebookLM
-            
+                logger.info("Importato NotebookLM da notebooklm_py")
+            except ImportError:
+                # Se fallisce, proviamo il nome senza underscore
+                from notebooklm import NotebookLM
+                logger.info("Importato NotebookLM da notebooklm")
+                
             self._client = NotebookLM(cookies=self.cookies)
         return self._client
 
