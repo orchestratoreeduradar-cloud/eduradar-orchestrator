@@ -85,8 +85,9 @@ class NotebookLMPlaywright:
 
                 # 1. Crea Nuovo Notebook
                 logger.info("➕ Creazione nuovo notebook...")
-                btn_create = page.get_by_role("button", name=re.compile(r"(Create new|Crea nuovo)", re.IGNORECASE))
-                await btn_create.click()
+                #btn_create = page.get_by_role("button", name=re.compile(r"(Create new|Crea nuovo)", re.IGNORECASE))
+                #await btn_create.click()
+                await page.get_by_role("button", name=re.compile(r"(Create new|Crea nuovo)", re.IGNORECASE)).first.click()
                 
                 await page.wait_for_timeout(5000)
 
