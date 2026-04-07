@@ -5,7 +5,7 @@ tenacity>=8.2.0
 python-dotenv>=1.0.0
 
 # NotebookLM
-notebooklm-py>=0.3.4
+notebooklm-py==0.4.0
 
 # Web Scraping & Search
 beautifulsoup4>=4.12.0
