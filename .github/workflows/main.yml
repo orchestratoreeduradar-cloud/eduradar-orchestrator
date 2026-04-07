@@ -4,256 +4,51 @@ on:
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
-    inputs:
-      force_run:
-        description: 'Forza esecuzione ignorando limiti'
-        required: false
-        default: 'false'
-        type: boolean
 
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
   SUPABASE_VIDEO_BUCKET: ${{ secrets.SUPABASE_VIDEO_BUCKET }}
   MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
-  WORKER_1_COOKIES: ${{ secrets.WORKER_1_COOKIES }}
-  WORKER_2_COOKIES: ${{ secrets.WORKER_2_COOKIES }}
 
 jobs:
   orchestrator:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    
     outputs:
-      dispatch_count: ${{ steps.orchestrate.outputs.dispatch_count }}
-      tasks: ${{ steps.orchestrate.outputs.tasks }}
-    
+      # Semplifichiamo gli output per evitare l'errore rosso
+      status: ${{ steps.orchestrate.outcome }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
       - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
+        run: pip install -r requirements.txt
       - name: Run Orchestrator
         id: orchestrate
-        run: |
-          python orchestrator.py 2>&1 | tee orchestrator.log
-          
-          DISPATCH_COUNT=$(grep -oP 'Dispatched: \K[0-9]+' orchestrator.log || echo "0")
-          echo "dispatch_count=$DISPATCH_COUNT" >> $GITHUB_OUTPUT
-          
-          echo "=== ORCHESTRATOR SUMMARY ==="
-          echo "Dispatched: $DISPATCH_COUNT tasks"
-        shell: bash
-
-      - name: Upload Orchestrator Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: orchestrator-logs
-          path: orchestrator.log
-          retention-days: 7
+        run: python orchestrator.py
 
   worker_1:
     needs: orchestrator
-    if: needs.orchestrator.outputs.dispatch_count >= '1'
+    # Facciamo partire il worker se l'orchestratore ha avuto successo
+    if: needs.orchestrator.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
     env:
       GOOGLE_COOKIES: ${{ secrets.WORKER_1_COOKIES }}
-    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Install Playwright Browsers
-        run: |
           playwright install chromium
-
-      - name: Get Pending News for Worker 1
-        id: get_news
+      - name: Get News and Run
         run: |
-          python - << 'EOF'
-          import os
-          import json
-          from supabase import create_client
-          
-          supabase = create_client(
-              os.getenv("SUPABASE_URL"),
-              os.getenv("SUPABASE_SERVICE_KEY")
-          )
-          
-          response = supabase.table("news_queue").select("*").eq("status", "processing").limit(1).execute()
-          
-          if response.data:
-              news = response.data[0]
-              print(f"news_url={news['url']}")
-              print(f"news_id={news['id']}")
-          else:
-              print("news_url=")
-              print("news_id=0")
-          EOF
-        shell: bash
-
-      - name: Run Worker 1 Task
-        if: steps.get_news.outputs.news_url != ''
-        run: |
-          python worker_task.py \
-            --worker-id 1 \
-            --news-url "${{ steps.get_news.outputs.news_url }}"
-        shell: bash
-
-      - name: Upload Worker 1 Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: worker-1-logs
-          path: |
-            *.log
-            /tmp/*.log
-          retention-days: 7
-
-  worker_2:
-    needs: orchestrator
-    if: needs.orchestrator.outputs.dispatch_count >= '2'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
-    env:
-      GOOGLE_COOKIES: ${{ secrets.WORKER_2_COOKIES }}
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Install Playwright Browsers
-        run: |
-          playwright install chromium
-
-      - name: Get Pending News for Worker 2
-        id: get_news
-        run: |
-          python - << 'EOF'
-          import os
-          from supabase import create_client
-          
-          supabase = create_client(
-              os.getenv("SUPABASE_URL"),
-              os.getenv("SUPABASE_SERVICE_KEY")
-          )
-          
-          response = supabase.table("news_queue").select("*").eq("status", "processing").limit(1).offset(1).execute()
-          
-          if response.data:
-              news = response.data[0]
-              print(f"news_url={news['url']}")
-              print(f"news_id={news['id']}")
-          else:
-              print("news_url=")
-              print("news_id=0")
-          EOF
-        shell: bash
-
-      - name: Run Worker 2 Task
-        if: steps.get_news.outputs.news_url != ''
-        run: |
-          python worker_task.py \
-            --worker-id 2 \
-            --news-url "${{ steps.get_news.outputs.news_url }}"
-        shell: bash
-
-      - name: Upload Worker 2 Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: worker-2-logs
-          path: |
-            *.log
-            /tmp/*.log
-          retention-days: 7
-
-  cleanup:
-    needs: [orchestrator, worker_1, worker_2]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Dependencies
-        run: |
-          pip install supabase
-
-      - name: Release Any Stuck Locks
-        run: |
-          python - << 'EOF'
-          import os
-          from datetime import datetime, timedelta
-          from supabase import create_client
-          
-          supabase = create_client(
-              os.getenv("SUPABASE_URL"),
-              os.getenv("SUPABASE_SERVICE_KEY")
-          )
-          
-          response = supabase.table("workers").select("*").eq("is_locked", True).execute()
-          
-          for worker in response.data:
-              if worker.get("locked_at"):
-                  locked_time = datetime.fromisoformat(worker["locked_at"].replace("Z", "+00:00"))
-                  if datetime.utcnow() - locked_time.replace(tzinfo=None) > timedelta(hours=2):
-                      supabase.table("workers").update({
-                          "is_locked": False,
-                          "locked_at": None,
-                          "locked_by": None
-                      }).eq("id", worker["id"]).execute()
-                      print(f"Released stuck lock for worker {worker['id']}")
-          
-          print("Cleanup completed")
-          EOF
-        shell: bash
-
-      - name: Final Summary
-        run: |
-          echo "=== EDURADAR WORKFLOW COMPLETED ==="
-          echo "Orchestrator dispatched: ${{ needs.orchestrator.outputs.dispatch_count }} tasks"
-          echo "Workers executed: worker_1=${{ needs.worker_1.result }}, worker_2=${{ needs.worker_2.result }}"
+          # Il worker cercherà da solo se ci sono notizie in "processing" su Supabase
+          python worker_task.py --worker-id 1
