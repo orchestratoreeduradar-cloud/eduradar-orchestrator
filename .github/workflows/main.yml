@@ -39,4 +39,4 @@ jobs:
           # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           # Avvia il tuo script (cambia worker.py con il nome del tuo file)
-          python worker.py
+          python worker_task.py
