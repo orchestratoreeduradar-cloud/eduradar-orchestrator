@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import re
 import tempfile
 import uuid
 import asyncio
@@ -81,7 +82,14 @@ class NotebookLMPlaywright:
                 await page.goto("https://notebooklm.google.com/", timeout=60000)
                 
                 # 1. Crea Nuovo Notebook
-                await page.get_by_role("button", name="Create new").click()
+                try:
+                    # Proviamo a cliccare il tasto usando un'espressione regolare che accetta entrambi i nomi
+                    await page.get_by_role("button", name=re.compile(r"(Create new|Crea nuovo)", re.IGNORECASE)).click()
+                    print("✅ Tasto 'Crea nuovo' cliccato.")
+                except Exception:
+                    print("⚠️ Tasto 'Create new' non trovato col nome standard. Provo ricerca testuale...")
+                    # Tentativo di riserva se il ruolo button fallisce
+                    await page.click("text='Create new'", timeout=5000)
                 await page.wait_for_timeout(3000)
 
                 # 2. Aggiungi URL News come fonte
