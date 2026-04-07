@@ -163,14 +163,26 @@ class NotebookLMClient:
 
     def _get_client(self):
         if self._client is None:
-            try:
-                from notebooklm_py import NotebookLM
-                logger.info("Importato da notebooklm_py")
-            except ImportError:
-                from notebooklm import NotebookLM
-                logger.info("Importato da notebooklm")
+            import notebooklm
             
-            self._client = NotebookLM(cookies=self.cookies)
+            # Controlliamo se NotebookLM è direttamente nel modulo o dentro un sottomodulo
+            if hasattr(notebooklm, 'NotebookLM'):
+                # Caso standard
+                self._client = notebooklm.NotebookLM(cookies=self.cookies)
+                logger.info("NotebookLM importato direttamente")
+            elif hasattr(notebooklm, 'notebooklm') and hasattr(notebooklm.notebooklm, 'NotebookLM'):
+                # Caso sottomodulo (comune in alcune versioni)
+                self._client = notebooklm.notebooklm.NotebookLM(cookies=self.cookies)
+                logger.info("NotebookLM importato da sottomodulo")
+            else:
+                # Se ancora non la trova, proviamo a forzare l'import dalla libreria 'notebooklm_py'
+                try:
+                    from notebooklm_py import NotebookLM
+                    self._client = NotebookLM(cookies=self.cookies)
+                    logger.info("NotebookLM importato da notebooklm_py")
+                except ImportError:
+                    raise ImportError("Impossibile trovare la classe NotebookLM nella libreria installata.")
+        
         return self._client
 
     @retry(
