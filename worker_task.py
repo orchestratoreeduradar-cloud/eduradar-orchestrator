@@ -87,32 +87,49 @@ class NotebookLMPlaywright:
                 # Aspettiamo che la modale si carichi bene
                 await page.wait_for_timeout(5000)
 
-                # 2. SELEZIONE FONTE "SITO WEB" (Passaggio mancante!)
-                logger.info("🔗 Selezione tipo fonte: Sito Web...")
-                # Cerchiamo il pulsante che contiene "Website" o "Sito web" o l'icona del link
-                website_btn = page.get_by_role("button", name=re.compile(r"(Website|Sito web|Link|Collegamento)", re.IGNORECASE))
+                # 2. SELEZIONE FONTE "SITO WEB"
+                logger.info("🔗 Selezione tipo fonte...")
                 
-                if await website_btn.count() > 0:
-                    await website_btn.first.click()
-                    await page.wait_for_timeout(2000)
-                else:
-                    # Se non lo trova come bottone, prova a cliccare l'elemento testuale
-                    await page.click("text=/Website|Sito web|Link/", timeout=5000)
-                
-                # Ora la casella placeholder dovrebbe essere visibile
-                logger.info(f"✍️ Inserimento URL: {news_url}")
-                input_url = page.get_by_placeholder("https://")
-                await input_url.wait_for(state="visible", timeout=10000)
-                await input_url.fill(news_url)
-                await page.keyboard.press("Enter")
+                # Strategia 1: Cerca il pulsante per ruolo e nome (bilingue)
+                website_selectors = [
+                    page.get_by_role("button", name=re.compile(r"(Website|Sito web|Link|Collegamento)", re.IGNORECASE)),
+                    page.locator("button:has-text('Website')"),
+                    page.locator("button:has-text('Sito web')"),
+                    page.locator("button:has-text('Link')")
+                ]
 
-                # 3. Generazione Guida Audio
-                logger.info("🎙️ Apertura Guida del notebook...")
-                await page.get_by_role("button", name=re.compile(r"(Notebook guide|Guida del notebook)", re.IGNORECASE)).first.click()
+                clicked = False
+                for selector in website_selectors:
+                    if await selector.count() > 0:
+                        await selector.first.click()
+                        clicked = True
+                        logger.info("✅ Tipo fonte selezionato con successo.")
+                        break
+                
+                if not clicked:
+                    # Strategia 2: Se i pulsanti falliscono, proviamo a cliccare l'icona specifica o il testo nudo
+                    logger.warning("⚠️ Pulsante non trovato, provo click forzato su testo...")
+                    await page.click("text=/Website|Sito web|Link/", timeout=10000)
+
                 await page.wait_for_timeout(3000)
 
-                logger.info("⚙️ Avvio generazione audio...")
-                await page.get_by_role("button", name=re.compile(r"(Generate|Genera)", re.IGNORECASE)).first.click()
+                # 3. INSERIMENTO URL
+                logger.info(f"✍️ Inserimento URL: {news_url}")
+                # Cerchiamo il placeholder "https://"
+                input_url = page.get_by_placeholder("https://")
+                
+                # Aspettiamo che sia pronto per scrivere
+                await input_url.wait_for(state="visible", timeout=15000)
+                await input_url.fill(news_url)
+                
+                # Clicchiamo sul tasto "Insert" o "Inserisci" (spesso l'Invio da tastiera non basta nelle modale)
+                await page.keyboard.press("Enter")
+                
+                # TENTATIVO EXTRA: Cerca il tasto "Aggiungi" o "Insert" se la modale non si chiude
+                await page.wait_for_timeout(2000)
+                btn_insert = page.get_by_role("button", name=re.compile(r"(Insert|Aggiungi|Aggiungi collegamento)", re.IGNORECASE))
+                if await btn_insert.count() > 0:
+                    await btn_insert.first.click()
                 
                 # 4. Attesa e Download
                 logger.info("⏳ Generazione in corso (può volerci qualche minuto)...")
