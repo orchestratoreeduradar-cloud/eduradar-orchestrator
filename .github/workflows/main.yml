@@ -15,40 +15,62 @@ jobs:
   orchestrator:
     runs-on: ubuntu-latest
     outputs:
-      # Semplifichiamo gli output per evitare l'errore rosso
       status: ${{ steps.orchestrate.outcome }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install Dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+
       - name: Run Orchestrator
         id: orchestrate
         run: python orchestrator.py
 
   worker_1:
     needs: orchestrator
-    # Facciamo partire il worker se l'orchestratore ha avuto successo
     if: needs.orchestrator.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       GOOGLE_COOKIES: ${{ secrets.WORKER_1_COOKIES }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
           playwright install chromium
-      - name: Get News and Run
+
+      - name: Run Worker 1 Task
         run: |
-          # Il worker cercherà da solo se ci sono notizie in "processing" su Supabase
-          python worker_task.py --worker-id 1
+          # Recuperiamo l'URL della notizia marcata come 'processing' per il worker 1
+          NEWS_URL=$(python -c "import os; from supabase import create_client; s=create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_SERVICE_KEY')); r=s.table('news_queue').select('url').eq('status', 'processing').limit(1).execute(); print(r.data[0]['url'] if r.data else '')")
+          
+          if [ -n "$NEWS_URL" ]; then
+            echo "Avvio elaborazione per: $NEWS_URL"
+            python worker_task.py --worker-id 1 --news-url "$NEWS_URL"
+          else
+            echo "Nessuna notizia in stato 'processing' trovata nel database."
+            exit 1
+          fi
+
+  cleanup:
+    needs: [orchestrator, worker_1]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Final Check
+        run: echo "Workflow completato. Controlla il bucket 'videos' su Supabase."
