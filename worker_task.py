@@ -90,23 +90,41 @@ class NotebookLMPlaywright:
                 # 2. SELEZIONE FONTE "SITO WEB"
                 logger.info("🔗 Selezione tipo fonte...")
                 
-                # Invece di cercare il testo, cerchiamo l'elemento che ha l'icona del LINK
-                # In NotebookLM l'icona del link ha spesso un selettore specifico
-                await page.click("button:has(mat-icon:has-text('link'))", timeout=10000)
-                
-                # Se il click sopra fallisce, usiamo un selettore CSS generico per il 4° bottone 
-                # (di solito il sito web è la quarta opzione)
-                await page.wait_for_timeout(2000)
-                
+                # Invece di cercare il testo, clicchiamo sul pulsante che contiene l'icona 'link'
+                # Questo selettore punta direttamente all'elemento interattivo di Google
+                try:
+                    # Cerchiamo il bottone che ha l'icona del link all'interno
+                    source_btn = page.locator("button").filter(has=page.locator("mat-icon:has-text('link')")).first
+                    await source_btn.wait_for(state="visible", timeout=10000)
+                    await source_btn.click(force=True)
+                except Exception:
+                    logger.warning("⚠️ Selettore icona fallito, provo click per testo bilingue...")
+                    await page.get_by_role("button", name=re.compile(r"(Website|Sito web|Link|Collegamento)", re.IGNORECASE)).first.click(force=True)
+
+                await page.wait_for_timeout(3000)
+
                 # 3. INSERIMENTO URL
                 logger.info(f"✍️ Inserimento URL: {news_url}")
                 
-                # Invece di get_by_placeholder, usiamo il selettore dell'input di tipo URL o testo
-                # che appare nella modale
-                url_input = page.locator("input[type='url'], input[type='text']").last
-                await url_input.wait_for(state="visible", timeout=10000)
+                # Invece di cercare per tipo, cerchiamo proprio il campo che ha il focus o l'unico input visibile
+                # Spesso il campo URL in NotebookLM ha una classe specifica 'mat-mdc-input-element'
+                url_input = page.locator("input.mat-mdc-input-element, input[type='text'], input[type='url']").first
+                
+                # Aspettiamo che sia pronto e visibile
+                await url_input.wait_for(state="visible", timeout=15000)
+                
+                # Clicchiamo prima per sicurezza, poi puliamo e scriviamo
+                await url_input.click()
                 await url_input.fill(news_url)
+                await page.wait_for_timeout(1000)
                 await page.keyboard.press("Enter")
+                
+                # CRUCIALE: Dopo l'invio, spesso serve cliccare "Aggiungi" o "Insert"
+                await page.wait_for_timeout(2000)
+                insert_btn = page.get_by_role("button", name=re.compile(r"(Insert|Aggiungi|Conferma|Add)", re.IGNORECASE)).first
+                if await insert_btn.is_visible():
+                    await insert_btn.click()
+                    logger.info("✅ Tasto 'Aggiungi' cliccato.")
                 
                 # 4. Attesa e Download
                 logger.info("⏳ Generazione in corso (può volerci qualche minuto)...")
