@@ -72,8 +72,7 @@ class NotebookLMPlaywright:
 
     async def run_pipeline(self, news_url: str, notebook_name: str) -> str:
         async with async_playwright() as p:
-            # Avvio browser
-            browser = await p.chromium.launch(headless=True) # IMPORTANTE: True su GitHub
+            browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(storage_state=self.auth_json)
             page = await context.new_page()
 
@@ -81,42 +80,60 @@ class NotebookLMPlaywright:
                 logger.info("🌐 Navigazione verso NotebookLM...")
                 await page.goto("https://notebooklm.google.com/", timeout=60000)
                 
+                # Screenshot per vedere se siamo loggati correttamente
+                await page.screenshot(path="debug_dashboard.png")
+
                 # 1. Crea Nuovo Notebook
-                try:
-                    # Proviamo a cliccare il tasto usando un'espressione regolare che accetta entrambi i nomi
-                    await page.get_by_role("button", name=re.compile(r"(Create new|Crea nuovo)", re.IGNORECASE)).click()
-                    print("✅ Tasto 'Crea nuovo' cliccato.")
-                except Exception:
-                    print("⚠️ Tasto 'Create new' non trovato col nome standard. Provo ricerca testuale...")
-                    # Tentativo di riserva se il ruolo button fallisce
-                    await page.click("text='Create new'", timeout=5000)
-                await page.wait_for_timeout(3000)
+                logger.info("➕ Creazione nuovo notebook...")
+                btn_create = page.get_by_role("button", name=re.compile(r"(Create new|Crea nuovo)", re.IGNORECASE))
+                await btn_create.click()
+                
+                await page.wait_for_timeout(5000)
 
                 # 2. Aggiungi URL News come fonte
-                logger.info(f"🔗 Aggiunta fonte: {news_url}")
-                await page.get_by_placeholder("https://...").fill(news_url)
+                # A volte bisogna cliccare sull'icona "Link" nella modale
+                link_icon = page.get_by_role("button", name=re.compile(r"(Link|Collegamento)", re.IGNORECASE))
+                if await link_icon.is_visible():
+                    await link_icon.click()
+
+                logger.info(f"🔗 Inserimento fonte: {news_url}")
+                placeholder = page.get_by_placeholder(re.compile(r"https://", re.IGNORECASE))
+                await placeholder.fill(news_url)
                 await page.keyboard.press("Enter")
-                await page.wait_for_timeout(10000) # Attesa caricamento fonte
-
-                # 3. Generazione Guida Audio (Deep Dive)
-                logger.info("🎙️ Generazione Guida Audio...")
-                await page.get_by_role("button", name="Notebook guide").click()
-                await page.get_by_role("button", name="Generate").click()
                 
-                # Questa parte è lenta (Google ci mette 1-4 minuti)
-                logger.info("⏳ Attendendo la generazione dell'audio (max 5 min)...")
-                await page.wait_for_selector("text='Download'", timeout=300000)
+                # Aspettiamo che la fonte venga caricata e la modale si chiuda
+                await page.wait_for_timeout(12000) 
 
-                # 4. Download
-                # Gestione del download in Playwright
+                # 3. Generazione Guida Audio
+                logger.info("🎙️ Apertura Guida del notebook...")
+                btn_guide = page.get_by_role("button", name=re.compile(r"(Notebook guide|Guida del notebook)", re.IGNORECASE))
+                await btn_guide.click()
+                await page.wait_for_timeout(2000)
+
+                logger.info("⚙️ Avvio generazione audio...")
+                btn_gen = page.get_by_role("button", name=re.compile(r"(Generate|Genera)", re.IGNORECASE))
+                await btn_gen.click()
+                
+                # 4. Attesa e Download
+                logger.info("⏳ Generazione in corso (può volerci tempo)...")
+                # Aspettiamo che il tasto "Download" o "Scarica" appaia
+                selector_download = "text=/Download|Scarica/"
+                await page.wait_for_selector(selector_download, timeout=300000)
+
                 async with page.expect_download() as download_info:
-                    await page.get_by_role("button", name="Download").click()
-                download = await download_info.value
+                    await page.get_by_role("button", name=re.compile(r"(Download|Scarica)", re.IGNORECASE)).click()
                 
+                download = await download_info.value
                 tmp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}.wav")
                 await download.save_as(tmp_path)
+                
+                logger.info(f"✅ Audio scaricato in locale: {tmp_path}")
                 return tmp_path
 
+            except Exception as e:
+                await page.screenshot(path="errore_esecuzione.png")
+                logger.error(f"❌ Errore durante il workflow: {e}")
+                raise e
             finally:
                 await browser.close()
 
