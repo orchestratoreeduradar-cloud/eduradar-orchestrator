@@ -163,7 +163,12 @@ class NotebookLMClient:
 
     def _get_client(self):
         if self._client is None:
-            from notebooklm_py import NotebookLM
+            # Prova a usare notebooklm_py se notebooklm fallisce
+            try:
+                from notebooklm import NotebookLM
+            except ImportError:
+                from notebooklm_py import NotebookLM
+            
             self._client = NotebookLM(cookies=self.cookies)
         return self._client
 
