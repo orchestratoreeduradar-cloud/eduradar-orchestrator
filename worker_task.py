@@ -163,7 +163,7 @@ class NotebookLMClient:
 
     def _get_client(self):
         if self._client is None:
-            from notebooklm import NotebookLM
+            from notebooklm_py import NotebookLM
             self._client = NotebookLM(cookies=self.cookies)
         return self._client
 
