@@ -115,31 +115,28 @@ class NotebookLMPlaywright:
                 # 3. INSERIMENTO URL
                 logger.info(f"✍️ Inserimento URL: {news_url}")
                 
-                # Usiamo un selettore molto più preciso per l'input dell'URL
-                # Cerchiamo l'input che NON è quello del titolo
-                url_input = page.locator("input[type='url'], input.mat-mdc-input-element").filter(has_not_class="title-input").first
+                # Usiamo un selettore CSS che prende l'input ma ESCLUDE quello con classe title-input
+                # Il selettore "input:not(.title-input)" è universale
+                url_input = page.locator("input:not(.title-input)").first
                 
                 # Aspettiamo che sia pronto
                 await url_input.wait_for(state="visible", timeout=15000)
                 
-                # AZIONE FORZATA: Usiamo fill() con force=True o scriviamo via JS 
-                # per ignorare il "velo" (backdrop) che intercetta i click
-                await url_input.focus()
+                # Usiamo fill con force=True per ignorare il "velo" (backdrop)
                 await url_input.fill(news_url, force=True)
                 
-                logger.info("🔗 URL inserito forzatamente.")
+                logger.info("🔗 URL inserito con successo.")
                 await page.keyboard.press("Enter")
                 
-                # 4. CONFERMA (Tasto Aggiungi/Insert)
+                # 4. CONFERMA (Tasto Aggiungi/Insert) via JavaScript
                 await page.wait_for_timeout(3000)
-                
-                # Clicchiamo il tasto di conferma usando JavaScript per bypassare di nuovo il backdrop
                 await page.evaluate("""() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
                     const confirmBtn = buttons.find(b => 
                         b.textContent.includes('Insert') || 
                         b.textContent.includes('Aggiungi') || 
-                        b.textContent.includes('Add')
+                        b.textContent.includes('Add') ||
+                        b.textContent.includes('Conferma')
                     );
                     if (confirmBtn) confirmBtn.click();
                 }""")
