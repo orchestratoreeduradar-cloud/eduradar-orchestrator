@@ -1,76 +1,42 @@
-name: EduRadar Main Workflow
+name: EduRadar Worker Runner
 
 on:
-  schedule:
-    - cron: '0 4 * * *'
-  workflow_dispatch:
-
-env:
-  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-  SUPABASE_VIDEO_BUCKET: ${{ secrets.SUPABASE_VIDEO_BUCKET }}
-  MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Ti permette di avviarlo manualmente da GitHub
 
 jobs:
-  orchestrator:
+  run-worker:
     runs-on: ubuntu-latest
-    outputs:
-      status: ${{ steps.orchestrate.outcome }}
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip' # Velocizza le esecuzioni successive
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Installiamo playwright separatamente per sicurezza
+          pip install playwright
 
-      - name: Run Orchestrator
-        id: orchestrate
-        run: python orchestrator.py
-
-  worker_1:
-    needs: orchestrator
-    if: needs.orchestrator.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      GOOGLE_COOKIES: ${{ secrets.WORKER_1_COOKIES }}
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Dependencies
+      - name: Install Playwright Browsers
         run: |
-          pip install -r requirements.txt
-          playwright install chromium
+          # Installa solo Chromium per risparmiare tempo e spazio
+          playwright install chromium --with-deps
 
-      - name: Run Worker 1 Task
+      - name: Run Worker Script
+        env:
+          # Qui passiamo il segreto JSON all'ambiente di sistema
+          NOTEBOOKLM_AUTH_JSON: ${{ secrets.NOTEBOOKLM_AUTH_JSON }}
+          # Aggiungi qui altri segreti se servono (es. API Keys)
+          # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          # Recuperiamo l'URL della notizia marcata come 'processing' per il worker 1
-          NEWS_URL=$(python -c "import os; from supabase import create_client; s=create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_SERVICE_KEY')); r=s.table('news_queue').select('url').eq('status', 'processing').limit(1).execute(); print(r.data[0]['url'] if r.data else '')")
-          
-          if [ -n "$NEWS_URL" ]; then
-            echo "Avvio elaborazione per: $NEWS_URL"
-            python worker_task.py --worker-id 1 --news-url "$NEWS_URL"
-          else
-            echo "Nessuna notizia in stato 'processing' trovata nel database."
-            exit 1
-          fi
-
-  cleanup:
-    needs: [orchestrator, worker_1]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Final Check
-        run: echo "Workflow completato. Controlla il bucket 'videos' su Supabase."
+          # Avvia il tuo script (cambia worker.py con il nome del tuo file)
+          python worker.py
