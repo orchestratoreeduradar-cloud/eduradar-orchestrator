@@ -90,41 +90,54 @@ class NotebookLMPlaywright:
                 # 2. SELEZIONE FONTE "SITO WEB"
                 logger.info("🔗 Selezione tipo fonte...")
                 
-                # Invece di cercare il testo, clicchiamo sul pulsante che contiene l'icona 'link'
-                # Questo selettore punta direttamente all'elemento interattivo di Google
+                # Cerchiamo l'elemento che contiene l'icona del link
+                # Usiamo una valutazione JavaScript per essere sicuri di colpire il centro del tasto
                 try:
-                    # Cerchiamo il bottone che ha l'icona del link all'interno
-                    source_btn = page.locator("button").filter(has=page.locator("mat-icon:has-text('link')")).first
-                    await source_btn.wait_for(state="visible", timeout=10000)
-                    await source_btn.click(force=True)
-                except Exception:
-                    logger.warning("⚠️ Selettore icona fallito, provo click per testo bilingue...")
+                    # Aspettiamo che la griglia delle fonti sia carica
+                    await page.wait_for_selector("mat-icon", timeout=10000)
+                    
+                    # Troviamo il pulsante che contiene l'icona 'link' e clicchiamo via JS
+                    await page.evaluate("""() => {
+                        const icons = Array.from(document.querySelectorAll('mat-icon'));
+                        const linkIcon = icons.find(i => i.textContent.includes('link'));
+                        if (linkIcon) {
+                            linkIcon.closest('button').click();
+                        }
+                    }""")
+                    logger.info("✅ Click JS sulla fonte inviato.")
+                except Exception as e:
+                    logger.warning(f"⚠️ Click JS fallito: {e}. Provo metodo standard...")
                     await page.get_by_role("button", name=re.compile(r"(Website|Sito web|Link|Collegamento)", re.IGNORECASE)).first.click(force=True)
 
-                await page.wait_for_timeout(3000)
+                # Diamo tempo alla finestra dell'URL di apparire (fondamentale)
+                await page.wait_for_timeout(5000)
 
                 # 3. INSERIMENTO URL
                 logger.info(f"✍️ Inserimento URL: {news_url}")
                 
-                # Invece di cercare per tipo, cerchiamo proprio il campo che ha il focus o l'unico input visibile
-                # Spesso il campo URL in NotebookLM ha una classe specifica 'mat-mdc-input-element'
-                url_input = page.locator("input.mat-mdc-input-element, input[type='text'], input[type='url']").first
+                # Invece di cercare classi specifiche, cerchiamo QUALSIASI input visibile nella modale
+                # Spesso Google usa degli ID dinamici
+                url_input = page.locator("input").first
                 
-                # Aspettiamo che sia pronto e visibile
+                # Se non è visibile, proviamo a cercarlo via placeholder pulito
+                if not await url_input.is_visible():
+                    url_input = page.get_by_placeholder(re.compile(r"https", re.IGNORECASE))
+
                 await url_input.wait_for(state="visible", timeout=15000)
                 
-                # Clicchiamo prima per sicurezza, poi puliamo e scriviamo
+                # Azione di scrittura pulita
                 await url_input.click()
-                await url_input.fill(news_url)
+                await page.keyboard.type(news_url, delay=100) # Scrive come un umano per evitare blocchi
                 await page.wait_for_timeout(1000)
                 await page.keyboard.press("Enter")
                 
-                # CRUCIALE: Dopo l'invio, spesso serve cliccare "Aggiungi" o "Insert"
-                await page.wait_for_timeout(2000)
-                insert_btn = page.get_by_role("button", name=re.compile(r"(Insert|Aggiungi|Conferma|Add)", re.IGNORECASE)).first
-                if await insert_btn.is_visible():
-                    await insert_btn.click()
-                    logger.info("✅ Tasto 'Aggiungi' cliccato.")
+                # Attesa per il tasto "Inserisci" o "Aggiungi"
+                await page.wait_for_timeout(3000)
+                # Molti tasti di conferma di Google hanno la classe 'mat-mdc-button'
+                confirm_btn = page.locator("button:has-text('Insert'), button:has-text('Aggiungi'), button:has-text('Add')").first
+                if await confirm_btn.is_visible():
+                    await confirm_btn.click()
+                    logger.info("✅ Tasto conferma cliccato.")
                 
                 # 4. Attesa e Download
                 logger.info("⏳ Generazione in corso (può volerci qualche minuto)...")
