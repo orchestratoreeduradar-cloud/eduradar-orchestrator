@@ -33,10 +33,16 @@ jobs:
 
       - name: Run Worker Script
         env:
-          # Qui passiamo il segreto JSON all'ambiente di sistema
+          # Segreto per NotebookLM
           NOTEBOOKLM_AUTH_JSON: ${{ secrets.NOTEBOOKLM_AUTH_JSON }}
-          # Aggiungi qui altri segreti se servono (es. API Keys)
-          # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          
+          # Segreti per Supabase (CONTROLLA CHE I NOMI SIANO IDENTICI A QUELLI SU GITHUB)
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_VIDEO_BUCKET: ${{ secrets.SUPABASE_VIDEO_BUCKET }}
+          
+          # Altre variabili necessarie al tuo script
+          WORKER_ID: 1 
+          NEWS_URL: "https://esempio.com" # Qui poi dovrai gestire come passare l'URL reale
         run: |
-          # Avvia il tuo script (cambia worker.py con il nome del tuo file)
           python worker_task.py
