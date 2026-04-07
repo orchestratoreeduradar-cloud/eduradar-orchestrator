@@ -80,29 +80,31 @@ class NotebookLMPlaywright:
                 # Screenshot iniziale per debug
                 await page.screenshot(path="debug_dashboard.png")
 
-                # 1. Crea Nuovo Notebook
+               # 1. Crea Nuovo Notebook
                 logger.info("➕ Creazione nuovo notebook...")
-                # .first risolve l'errore "strict mode violation" (più pulsanti trovati)
                 await page.get_by_role("button", name=re.compile(r"(Create new|Crea nuovo)", re.IGNORECASE)).first.click()
                 
-                # Aspettiamo che si apra la modale delle fonti
-                await page.wait_for_timeout(7000)
+                # Aspettiamo che la modale si carichi bene
+                await page.wait_for_timeout(5000)
 
-                # 2. Aggiungi URL News come fonte
-                # Verifichiamo se serve cliccare sull'icona "Link"
-                link_icon = page.get_by_role("button", name=re.compile(r"(Link|Collegamento)", re.IGNORECASE))
-                if await link_icon.is_visible():
-                    await link_icon.click()
-                    await page.wait_for_timeout(1000)
-
-                logger.info(f"🔗 Inserimento fonte: {news_url}")
-                # Usiamo la stringa semplice per evitare errori di parsing regex negli attributi
-                await page.get_by_placeholder("https://").fill(news_url)
-                await page.keyboard.press("Enter")
+                # 2. SELEZIONE FONTE "SITO WEB" (Passaggio mancante!)
+                logger.info("🔗 Selezione tipo fonte: Sito Web...")
+                # Cerchiamo il pulsante che contiene "Website" o "Sito web" o l'icona del link
+                website_btn = page.get_by_role("button", name=re.compile(r"(Website|Sito web|Link|Collegamento)", re.IGNORECASE))
                 
-                # Attesa caricamento fonte (molto importante)
-                logger.info("⏳ Caricamento fonte in corso...")
-                await page.wait_for_timeout(15000) 
+                if await website_btn.count() > 0:
+                    await website_btn.first.click()
+                    await page.wait_for_timeout(2000)
+                else:
+                    # Se non lo trova come bottone, prova a cliccare l'elemento testuale
+                    await page.click("text=/Website|Sito web|Link/", timeout=5000)
+                
+                # Ora la casella placeholder dovrebbe essere visibile
+                logger.info(f"✍️ Inserimento URL: {news_url}")
+                input_url = page.get_by_placeholder("https://")
+                await input_url.wait_for(state="visible", timeout=10000)
+                await input_url.fill(news_url)
+                await page.keyboard.press("Enter")
 
                 # 3. Generazione Guida Audio
                 logger.info("🎙️ Apertura Guida del notebook...")
